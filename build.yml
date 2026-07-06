@@ -16,6 +16,7 @@ jobs:
       - name: Install & build
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm install
           npm run build:win
@@ -35,6 +36,7 @@ jobs:
       - name: Install & build
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm install
           npm run build:mac
