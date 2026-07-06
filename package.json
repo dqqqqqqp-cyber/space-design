@@ -1,0 +1,31 @@
+{
+  "name": "spacefield-generator",
+  "version": "1.0.0",
+  "description": "Space Field Generator — generative audio-reactive visual system",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:all": "electron-builder --mac --win"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.dqq.spacefield",
+    "productName": "Space Field Generator",
+    "mac": {
+      "category": "public.app-category.music",
+      "icon": "assets/icon.icns",
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }]
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico"
+    },
+    "files": ["src/**/*", "assets/**/*"],
+    "extraResources": []
+  }
+}

@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin:0; background:#0a0a0a; font-family:-apple-system,sans-serif; overflow:hidden; user-select:none; }
+  #wrap { display:flex; height:100vh; }
+  #canvasHost { flex:1; display:flex; align-items:center; justify-content:center; position:relative; }
+  #canvasHost canvas { display:block; }
+  #audioBtn {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    background:rgba(0,0,0,0.7); color:#6cf; border:1px solid #6cf;
+    padding:14px 28px; border-radius:8px; font-size:14px; cursor:pointer;
+    backdrop-filter:blur(8px); z-index:10;
+  }
+  #audioBtn:hover { background:rgba(102,204,255,0.15); }
+  #meters {
+    position:absolute; bottom:12px; left:12px; display:flex; gap:5px; opacity:0.6;
+  }
+  .meter { width:6px; background:#222; border-radius:3px; height:40px; overflow:hidden; display:flex; align-items:flex-end; }
+  .meter-fill { width:100%; background:#6cf; border-radius:3px; transition:height 0.05s; }
+  #panel {
+    width:300px; background:#161616; color:#ddd; padding:14px 16px;
+    overflow-y:auto; border-left:1px solid #2a2a2a; font-size:12px;
+    transition: width 0.2s, padding 0.2s; flex-shrink:0;
+  }
+  #panel.hidden { width:0; padding:0; overflow:hidden; }
+  #panel h2 { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:#666; margin:20px 0 8px; font-weight:600; }
+  #panel h2:first-child { margin-top:0; }
+  .row { margin-bottom:10px; }
+  .row label { display:flex; justify-content:space-between; margin-bottom:4px; color:#aaa; }
+  .val { color:#6cf; font-variant-numeric:tabular-nums; }
+  input[type=range]{ width:100%; height:3px; -webkit-appearance:none; background:#2a2a2a; border-radius:2px; outline:none; }
+  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#6cf; cursor:pointer; }
+  .btns { display:flex; gap:5px; flex-wrap:wrap; }
+  .btns button {
+    flex:1 1 auto; padding:7px 5px; background:#1e1e1e; color:#aaa; border:1px solid #2a2a2a;
+    border-radius:5px; cursor:pointer; font-size:11px; min-width:48px; transition:all 0.1s;
+  }
+  .btns button:hover { background:#252525; }
+  .btns button.active { background:#6cf; color:#000; border-color:#6cf; font-weight:600; }
+  .toggle { display:flex; align-items:center; gap:8px; cursor:pointer; }
+  .toggle input { accent-color:#6cf; }
+  .swatches { display:flex; gap:5px; flex-wrap:wrap; margin-top:4px; }
+  .swatch { width:24px; height:24px; border-radius:4px; cursor:pointer; border:2px solid transparent; }
+  .swatch.active { border-color:#fff; }
+  .actionrow { display:flex; gap:6px; }
+  .actionrow button { flex:1; padding:9px; background:#1e1e1e; color:#bbb; border:1px solid #2a2a2a; border-radius:6px; cursor:pointer; font-size:11px; }
+  .actionrow button:hover { background:#252525; border-color:#444; color:#fff; }
+  .hint { color:#555; font-size:10px; line-height:1.5; margin-top:8px; }
+  .divider { border:none; border-top:1px solid #222; margin:16px 0 4px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="canvasHost">
+    <button id="audioBtn">▶ Click to enable audio input</button>
+    <div id="meters">
+      <div class="meter"><div class="meter-fill" id="m-amp"  style="height:0%"></div></div>
+      <div class="meter"><div class="meter-fill" id="m-bass" style="height:0%;background:#f96"></div></div>
+      <div class="meter"><div class="meter-fill" id="m-mid"  style="height:0%;background:#9f6"></div></div>
+      <div class="meter"><div class="meter-fill" id="m-hi"   style="height:0%;background:#c6f"></div></div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <h2>Mode</h2>
+    <div class="btns" id="modeButtons"></div>
+    <div class="hint" id="modeHint"></div>
+    <div id="modeControls"></div>
+    <hr class="divider">
+    <h2>Color</h2>
+    <div class="row"><label class="toggle"><input type="checkbox" id="difference" checked> Difference blend</label></div>
+    <div class="row"><label>Saturation <span class="val" id="v_sat">70</span></label><input type="range" id="sat" min="0" max="100" step="1" value="70"></div>
+    <div class="row"><label>Brightness <span class="val" id="v_bright">64</span></label><input type="range" id="bright" min="20" max="100" step="1" value="64"></div>
+    <div class="row"><label>Alpha <span class="val" id="v_alpha">85</span></label><input type="range" id="alpha" min="5" max="100" step="1" value="85"></div>
+    <div class="row"><label>Palette</label><div class="swatches" id="palettes"></div></div>
+    <hr class="divider">
+    <h2>Audio → Visual</h2>
+    <div class="row"><label>Bass → Scale <span class="val" id="v_aScale">0.6</span></label><input type="range" id="aScale" min="0" max="2" step="0.05" value="0.6"></div>
+    <div class="row"><label>Amp → Speed <span class="val" id="v_aSpeed">0.8</span></label><input type="range" id="aSpeed" min="0" max="2" step="0.05" value="0.8"></div>
+    <div class="row"><label>Mid → Density <span class="val" id="v_aDensity">0.5</span></label><input type="range" id="aDensity" min="0" max="2" step="0.05" value="0.5"></div>
+    <hr class="divider">
+    <h2>Background</h2>
+    <div class="row"><label class="toggle"><input type="checkbox" id="darkbg"> Dark ground</label></div>
+    <hr class="divider">
+    <div class="actionrow">
+      <button id="regen">↺ Regenerate</button>
+      <button id="saveBtn">↓ Save HD</button>
+    </div>
+    <div class="hint">Cmd/Ctrl+S to save · 1–5 to switch modes · Cmd+/ to hide panel</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script>
+// ============================================================
+// SPACE FIELD GENERATOR  v1.0
+// Electron desktop app — generative audio-reactive visual system
+// ============================================================
+
+const PHI = 0.61803398875;
+
+const PALETTES = {
+  spectrum: [208,336,61,0,242,82,166,306,28],
+  warm:     [0,18,35,45,340,15,28,8],
+  cool:     [180,200,220,240,160,260,190],
+  earth:    [30,45,90,60,20,110,40],
+  mono:     [210],
+};
+let paletteKey = 'spectrum';
+
+// Global params
+const G = {
+  mode:'field', difference:true,
+  sat:70, bright:64, alpha:85, darkbg:false,
+  aScale:0.6, aSpeed:0.8, aDensity:0.5,
+};
+
+// Audio state (smoothed)
+let audio = { amp:0, bass:0, mid:0, hi:0 };
+let audioStarted = false;
+let analyserNode, sourceNode, audioCtx;
+
+let seedVal = Math.floor(Math.random()*99999);
+let currentMode = null;
+
+function randHue() { const h=PALETTES[paletteKey]; return random(h); }
+function palHue(i) { const h=PALETTES[paletteKey]; return h[i%h.length]; }
+
+function colorFill(hue, brightN, alphaMul=1) {
+  const b = G.difference ? lerp(G.bright*0.7, G.bright, brightN) : lerp(G.bright*0.5, G.bright, brightN);
+  fill(((hue%360)+360)%360, G.sat, b, G.alpha*alphaMul);
+}
+function colorStroke(hue, brightN, alphaMul=1, w=1) {
+  const b = G.difference ? lerp(G.bright*0.7, G.bright, brightN) : lerp(G.bright*0.5, G.bright, brightN);
+  stroke(((hue%360)+360)%360, G.sat, b, G.alpha*alphaMul);
+  strokeWeight(w);
+}
+
+// ——————————————————————————————————————————
+// MODE: FIELD  (golden modular grid + shape overlap)
+// ——————————————————————————————————————————
+const modeField = {
+  params:{ depth:4, golden:0.8, margin:0.06, count:4, scale:1.0, aspect:0.5,
+           spread:0.7, shapeType:'ellipse', sides:5, stardepth:0.5, round:0,
+           speed:0.6, breathe:0.4 },
+  cells:[], build(){
+    randomSeed(seedVal); noiseSeed(seedVal); this.cells=[];
+    this._sub(0,0,width,height,0);
+  },
+  _sub(x,y,w,h,d){ const P=this.params;
+    if(d>=P.depth||(d>=2&&random()>0.72)){this.cells.push(this._cell(x,y,w,h));return;}
+    let r=lerp(0.5,PHI,P.golden); if(random()<0.5)r=1-r;
+    if(w>h?random()<0.72:random()<0.28){const s=w*r;this._sub(x,y,s,h,d+1);this._sub(x+s,y,w-s,h,d+1);}
+    else{const s=h*r;this._sub(x,y,w,s,d+1);this._sub(x,y+s,w,h-s,d+1);}
+  },
+  _cell(x,y,w,h){
+    return{x,y,w,h,hue:randHue(),phase:random(TWO_PI),
+      blobs:Array.from({length:8},(_,i)=>({
+        ang:noise(i*0.7+random(100))*TWO_PI, dist:noise(i*0.3+random(200)),
+        sizeN:noise(i+random(300)), aspN:noise(i+random(400)),
+        hueShift:noise(i+random(500))-0.5, rot:noise(i+random(600))*TWO_PI,
+        brightN:noise(i+random(700)), seed:random(1)
+      }))};
+  },
+  render(t){
+    const P=this.params;
+    // audio modulation: bass→scale, amp→speed boost, mid→extra blobs
+    const audioScale = 1 + audio.bass * G.aScale;
+    const audioSpeed = 1 + audio.amp  * G.aSpeed;
+    const extraBlobs = Math.floor(audio.mid * G.aDensity * 3);
+    for(const cell of this.cells){
+      const mx=cell.w*P.margin,my=cell.h*P.margin;
+      const cx=cell.x+mx,cy=cell.y+my,cw=cell.w-mx*2,ch=cell.h-my*2;
+      if(cw<=0||ch<=0)continue;
+      const ctx=drawingContext; ctx.save();
+      ctx.beginPath(); ctx.rect(cx,cy,cw,ch); ctx.clip();
+      if(G.difference) ctx.globalCompositeOperation='difference';
+      noStroke();
+      const R=Math.min(cw,ch)*(0.5+P.spread*0.5);
+      const count=P.count+extraBlobs;
+      for(let i=0;i<count;i++){
+        const b=cell.blobs[i%cell.blobs.length];
+        const breathe=1+Math.sin(t*1.3*audioSpeed+cell.phase+i)*0.5*P.breathe;
+        const ang=b.ang+Math.sin(t*0.5*audioSpeed+b.dist*6)*0.3*P.speed;
+        const d=b.dist*R*breathe;
+        const bx=cx+cw/2+Math.cos(ang)*d*0.5, by=cy+ch/2+Math.sin(ang)*d*0.5;
+        const size=lerp(0.25,1.1,b.sizeN)*Math.min(cw,ch)*P.scale*audioScale*breathe;
+        colorFill((cell.hue+b.hueShift*40),b.brightN);
+        push();translate(bx,by);rotate(b.rot+t*0.1*P.speed);
+        _drawShape(P,size,size*lerp(1,lerp(1,0.35,P.aspect),b.aspN),b.seed);
+        pop();
+      }
+      ctx.globalCompositeOperation='source-over'; ctx.restore();
+    }
+  },
+  controls:[
+    {section:'Composition'},
+    {id:'depth',label:'Grid subdivisions',min:1,max:6,step:1,rebuild:true},
+    {id:'golden',label:'Golden bias',min:0,max:1,step:0.01,rebuild:true},
+    {id:'margin',label:'Cell margin',min:0,max:0.4,step:0.01},
+    {section:'Shape'},
+    {shapeButtons:true},
+    {id:'sides',label:'Polygon sides',min:3,max:12,step:1,showIf:p=>p.shapeType==='polygon'||p.shapeType==='star'},
+    {id:'stardepth',label:'Star depth',min:0.1,max:0.9,step:0.01,showIf:p=>p.shapeType==='star'},
+    {id:'round',label:'Corner round',min:0,max:1,step:0.01},
+    {section:'Elements'},
+    {id:'count',label:'Count per cell',min:1,max:8,step:1},
+    {id:'scale',label:'Scale',min:0.2,max:2.5,step:0.05},
+    {id:'aspect',label:'Aspect variation',min:0,max:1,step:0.01},
+    {id:'spread',label:'Spread',min:0,max:1.5,step:0.01},
+    {section:'Motion'},
+    {id:'speed',label:'Drift speed',min:0,max:3,step:0.01},
+    {id:'breathe',label:'Breathe',min:0,max:1,step:0.01},
+  ],
+};
+
+// ——————————————————————————————————————————
+// MODE: LINES
+// ——————————————————————————————————————————
+const modeLines = {
+  params:{ rows:40, resolution:120, amp:0.5, freq:2.0, weave:0.5, weight:1.4, speed:0.5, hueSpread:0.6 },
+  seeds:[], build(){
+    randomSeed(seedVal); noiseSeed(seedVal);
+    this.seeds=Array.from({length:this.params.rows},()=>random(1000));
+  },
+  render(t){
+    const P=this.params;
+    const warpAmp = P.amp + audio.amp * G.aScale;
+    const spd = P.speed * (1 + audio.amp * G.aSpeed);
+    drawingContext.globalCompositeOperation = G.difference?'difference':'source-over';
+    noFill();
+    for(let r=0;r<P.rows;r++){
+      const baseY=(r+0.5)/P.rows*height;
+      const sd=this.seeds[r]||r*17.3;
+      colorStroke(palHue(Math.floor(r*P.hueSpread)),0.7,0.9,P.weight);
+      beginShape();
+      for(let i=0;i<=P.resolution;i++){
+        const x=i/P.resolution*width;
+        const n=noise(i*0.02*P.freq+sd, r*0.15*P.weave+t*0.2*spd);
+        const n2=Math.sin(i*0.05*P.freq+sd+t*spd)*0.5;
+        curveVertex(x, baseY+(n-0.5+n2)*height/P.rows*(1+warpAmp*4));
+      }
+      endShape();
+    }
+    drawingContext.globalCompositeOperation='source-over';
+  },
+  controls:[
+    {section:'Line field'},
+    {id:'rows',label:'Line count',min:5,max:120,step:1,rebuild:true},
+    {id:'resolution',label:'Resolution',min:20,max:300,step:2},
+    {id:'amp',label:'Wave amount',min:0,max:1.5,step:0.01},
+    {id:'freq',label:'Frequency',min:0.3,max:6,step:0.05},
+    {id:'weave',label:'Weave',min:0,max:2,step:0.01},
+    {id:'weight',label:'Line weight',min:0.3,max:6,step:0.1},
+    {id:'speed',label:'Speed',min:0,max:2,step:0.01},
+    {id:'hueSpread',label:'Hue spread',min:0,max:2,step:0.01},
+  ],
+};
+
+// ——————————————————————————————————————————
+// MODE: STREAM
+// ——————————————————————————————————————————
+const modeStream = {
+  params:{ strands:6, length:400, step:6, wander:0.35, weight:2.0, speed:0.6 },
+  strands:[], build(){
+    randomSeed(seedVal); noiseSeed(seedVal);
+    this.strands=Array.from({length:this.params.strands},()=>({
+      x:random(width),y:random(height),dir:random(TWO_PI),sd:random(1000),hue:randHue()
+    }));
+  },
+  render(t){
+    const P=this.params;
+    const spd = P.speed*(1+audio.amp*G.aSpeed);
+    const wander = P.wander*(1+audio.mid*G.aDensity*0.5);
+    drawingContext.globalCompositeOperation = G.difference?'difference':'source-over';
+    noFill();
+    for(const s of this.strands){
+      let x=s.x,y=s.y,dir=s.dir;
+      colorStroke(s.hue,0.7,0.85,P.weight);
+      beginShape(); curveVertex(x,y);
+      for(let i=0;i<P.length;i++){
+        const n=noise(i*0.03+s.sd, t*0.1*spd);
+        dir+=(n-0.5)*wander;
+        x+=Math.cos(dir)*P.step; y+=Math.sin(dir)*P.step;
+        if(x<0)x+=width; if(x>width)x-=width;
+        if(y<0)y+=height; if(y>height)y-=height;
+        curveVertex(x,y);
+      }
+      endShape();
+    }
+    drawingContext.globalCompositeOperation='source-over';
+  },
+  controls:[
+    {section:'Stream'},
+    {id:'strands',label:'Strand count',min:1,max:24,step:1,rebuild:true},
+    {id:'length',label:'Strand length',min:50,max:1200,step:10},
+    {id:'step',label:'Step size',min:2,max:20,step:0.5},
+    {id:'wander',label:'Wander',min:0.05,max:1.2,step:0.01},
+    {id:'weight',label:'Line weight',min:0.5,max:8,step:0.1},
+    {id:'speed',label:'Evolve speed',min:0,max:2,step:0.01},
+  ],
+};
+
+// ——————————————————————————————————————————
+// MODE: FLOW
+// ——————————————————————————————————————————
+const modeFlow = {
+  params:{ particles:500, fieldScale:0.004, force:2.5, trail:0.1, weight:1.2, speed:0.4 },
+  pts:[], trailMode:true,
+  build(){
+    randomSeed(seedVal); noiseSeed(seedVal);
+    this.pts=Array.from({length:this.params.particles},()=>{
+      const x=random(width),y=random(height);
+      return{x,y,px:x,py:y,hue:randHue()};
+    });
+  },
+  render(t){
+    const P=this.params;
+    const spd=P.speed*(1+audio.amp*G.aSpeed);
+    const force=P.force*(1+audio.bass*G.aScale);
+    drawingContext.globalCompositeOperation = G.difference?'difference':'source-over';
+    for(const p of this.pts){
+      const a=noise(p.x*P.fieldScale, p.y*P.fieldScale, t*0.05*spd)*TWO_PI*2;
+      p.px=p.x; p.py=p.y;
+      p.x+=Math.cos(a)*force; p.y+=Math.sin(a)*force;
+      if(p.x<0)p.x+=width; if(p.x>width)p.x-=width;
+      if(p.y<0)p.y+=height; if(p.y>height)p.y-=height;
+      colorStroke(p.hue,0.7,0.7,P.weight);
+      if(Math.abs(p.x-p.px)<width*0.5 && Math.abs(p.y-p.py)<height*0.5)
+        line(p.px,p.py,p.x,p.y);
+    }
+    drawingContext.globalCompositeOperation='source-over';
+  },
+  controls:[
+    {section:'Flow field'},
+    {id:'particles',label:'Particles',min:50,max:2000,step:10,rebuild:true},
+    {id:'fieldScale',label:'Field scale',min:0.001,max:0.02,step:0.0005},
+    {id:'force',label:'Speed',min:0.5,max:8,step:0.1},
+    {id:'trail',label:'Trail length',min:0.01,max:0.5,step:0.01},
+    {id:'weight',label:'Line weight',min:0.3,max:4,step:0.1},
+    {id:'speed',label:'Field evolve',min:0,max:2,step:0.01},
+  ],
+};
+
+// ——————————————————————————————————————————
+// MODE: ORGANIC
+// ——————————————————————————————————————————
+const modeOrganic = {
+  params:{ seeds:5, depthMax:8, branchAngle:0.5, lengthRatio:0.72, weight:2.2, wobble:0.3 },
+  roots:[], build(){
+    randomSeed(seedVal); noiseSeed(seedVal);
+    this.roots=Array.from({length:this.params.seeds},()=>({
+      x:random(width*0.15,width*0.85), y:random(height*0.15,height*0.85),
+      dir:random(TWO_PI), len:Math.min(width,height)*random(0.1,0.22),
+      hue:randHue(), sd:random(1000)
+    }));
+  },
+  render(t){
+    const P=this.params;
+    drawingContext.globalCompositeOperation = G.difference?'difference':'source-over';
+    noFill();
+    const wobble=P.wobble*(1+audio.mid*G.aDensity);
+    for(const r of this.roots) this._branch(r.x,r.y,r.dir,r.len*(1+audio.bass*G.aScale*0.3),0,r,t,P,wobble);
+    drawingContext.globalCompositeOperation='source-over';
+  },
+  _branch(x,y,dir,len,depth,root,t,P,wobble){
+    if(depth>=P.depthMax||len<2.5)return;
+    const wob=(noise(depth*0.5+root.sd, t*0.04)-0.5)*wobble;
+    const ex=x+Math.cos(dir+wob)*len, ey=y+Math.sin(dir+wob)*len;
+    colorStroke(root.hue+depth*18, 0.7, 0.8, Math.max(0.4,P.weight*(1-depth/P.depthMax)));
+    line(x,y,ex,ey);
+    const ratio=P.lengthRatio;
+    this._branch(ex,ey,dir+P.branchAngle,len*ratio,depth+1,root,t,P,wobble);
+    this._branch(ex,ey,dir-P.branchAngle,len*ratio,depth+1,root,t,P,wobble);
+    if(noise(depth+root.sd*2)>0.62)
+      this._branch(ex,ey,dir+P.branchAngle*0.15,len*ratio*0.85,depth+1,root,t,P,wobble);
+  },
+  controls:[
+    {section:'Growth'},
+    {id:'seeds',label:'Seed count',min:1,max:16,step:1,rebuild:true},
+    {id:'depthMax',label:'Branch depth',min:3,max:12,step:1},
+    {id:'branchAngle',label:'Branch angle',min:0.05,max:1.5,step:0.01},
+    {id:'lengthRatio',label:'Length ratio',min:0.4,max:0.9,step:0.01},
+    {id:'weight',label:'Trunk weight',min:0.5,max:6,step:0.1},
+    {id:'wobble',label:'Wobble',min:0,max:1.5,step:0.01},
+  ],
+};
+
+const MODE_TABLE = {
+  field:   {obj:modeField,   label:'Field',   hint:'Golden-ratio modular grid with overlapping shapes in difference blend.'},
+  lines:   {obj:modeLines,   label:'Lines',   hint:'Dense woven line field — layered noise contours like a frozen soundwave.'},
+  stream:  {obj:modeStream,  label:'Stream',  hint:'Stream-of-consciousness: continuous wandering curves that drift and coil.'},
+  flow:    {obj:modeFlow,    label:'Flow',    hint:'Flow-field particle trails following an evolving noise vector field.'},
+  organic: {obj:modeOrganic, label:'Organic', hint:'Branching growth — fractal limbs spreading like neurons or root systems.'},
+};
+
+// ---------- Shape helpers ----------
+function _drawShape(P,w,h,seed){
+  const rw=w/2,rh=h/2;
+  switch(P.shapeType){
+    case 'ellipse': ellipse(0,0,w,h); break;
+    case 'rect': P.round>0?rect(-rw,-rh,w,h,Math.min(rw,rh)*P.round):rect(-rw,-rh,w,h); break;
+    case 'triangle': _poly(P,3,rw,rh); break;
+    case 'polygon': _poly(P,P.sides,rw,rh); break;
+    case 'star': _star(P,P.sides,rw,rh,P.stardepth); break;
+    case 'random': _rndshape(rw,rh,seed); break;
+  }
+}
+function _poly(P,n,rw,rh){const pts=[];for(let i=0;i<n;i++){const a=-HALF_PI+(i/n)*TWO_PI;pts.push([Math.cos(a)*rw,Math.sin(a)*rh]);}  _polyDraw(P,pts);}
+function _star(P,n,rw,rh,d){const pts=[];for(let i=0;i<n*2;i++){const a=-HALF_PI+(i/(n*2))*TWO_PI;const r=i%2===0?1:d;pts.push([Math.cos(a)*rw*r,Math.sin(a)*rh*r]);} _polyDraw(P,pts);}
+function _rndshape(rw,rh,seed){const n=5+Math.floor((seed*997)%5);const pts=[];for(let i=0;i<n;i++){const a=(i/n)*TWO_PI;const j=0.55+Math.abs(Math.sin(seed*13.7+i*2.3))*0.45;pts.push([Math.cos(a)*rw*j,Math.sin(a)*rh*j]);}  _polyDraw({round:1},pts,true);}
+function _polyDraw(P,pts,force){
+  const sm=force||P.round>0.02;
+  beginShape();
+  if(sm){curveVertex(pts[pts.length-1][0],pts[pts.length-1][1]);for(const p of pts)curveVertex(p[0],p[1]);curveVertex(pts[0][0],pts[0][1]);curveVertex(pts[1][0],pts[1][1]);}
+  else{for(const p of pts)vertex(p[0],p[1]);}
+  endShape(CLOSE);
+}
+
+// ==========================================================
+// SETUP + DRAW
+// ==========================================================
+function setup(){
+  const host=document.getElementById('canvasHost');
+  const W=host.clientWidth, H=host.clientHeight;
+  const cv=createCanvas(W,H);
+  cv.parent(host);
+  colorMode(HSB,360,100,100,100);
+  pixelDensity(2);
+  currentMode=MODE_TABLE[G.mode].obj;
+  currentMode.build();
+  buildUI();
+}
+
+function draw(){
+  const bg=G.darkbg?color(0,0,10):color(0,0,98);
+  if(currentMode.trailMode){
+    noStroke();
+    const tr=currentMode.params.trail||0.1;
+    fill(0,0,G.darkbg?4:96, tr*100);
+    rect(0,0,width,height);
+  } else {
+    background(bg);
+  }
+  const t=frameCount*0.01;
+  currentMode.render(t);
+  _updateAudioMeters();
+}
+
+function windowResized(){
+  const host=document.getElementById('canvasHost');
+  resizeCanvas(host.clientWidth, host.clientHeight);
+  currentMode.build();
+}
+
+// ==========================================================
+// AUDIO INPUT
+// ==========================================================
+async function startAudio(){
+  try {
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+    sourceNode = audioCtx.createMediaStreamSource(stream);
+    analyserNode = audioCtx.createAnalyser();
+    analyserNode.fftSize = 256;
+    sourceNode.connect(analyserNode);
+    audioStarted = true;
+    document.getElementById('audioBtn').style.display='none';
+    _tickAudio();
+  } catch(e) {
+    document.getElementById('audioBtn').textContent = '⚠ Audio permission denied — click to retry';
+    console.error(e);
+  }
+}
+
+function _tickAudio(){
+  if(!audioStarted) return;
+  const buf=new Uint8Array(analyserNode.frequencyBinCount);
+  analyserNode.getByteFrequencyData(buf);
+  const binHz=audioCtx.sampleRate/analyserNode.fftSize;
+  const avg=(a,b)=>{let s=0,n=0;for(let i=a;i<b&&i<buf.length;i++){s+=buf[i];n++;}return s/Math.max(1,n)/255;};
+  const rawAmp=avg(0,buf.length);
+  const rawBass=avg(0,Math.floor(250/binHz));
+  const rawMid=avg(Math.floor(250/binHz),Math.floor(4000/binHz));
+  const rawHi=avg(Math.floor(4000/binHz),buf.length);
+  const sm=0.15;
+  audio.amp  = lerp(audio.amp,  rawAmp,  sm);
+  audio.bass = lerp(audio.bass, rawBass, sm);
+  audio.mid  = lerp(audio.mid,  rawMid,  sm);
+  audio.hi   = lerp(audio.hi,   rawHi,   sm);
+  requestAnimationFrame(_tickAudio);
+}
+
+function _updateAudioMeters(){
+  if(!audioStarted) return;
+  document.getElementById('m-amp').style.height  = (audio.amp*100)+'%';
+  document.getElementById('m-bass').style.height = (audio.bass*100)+'%';
+  document.getElementById('m-mid').style.height  = (audio.mid*100)+'%';
+  document.getElementById('m-hi').style.height   = (audio.hi*100)+'%';
+}
+
+// ==========================================================
+// UI BUILD
+// ==========================================================
+function buildUI(){
+  document.getElementById('audioBtn').onclick=startAudio;
+  buildModeButtons();
+  buildModeControls();
+  buildGlobalUI();
+  buildPalettes();
+
+  // Electron menu/keyboard events via preload
+  if(window.electronAPI){
+    window.electronAPI.onMenuSave(()=>saveHD());
+    window.electronAPI.onMenuRegen(()=>regen());
+    window.electronAPI.onTogglePanel(()=>togglePanel());
+    window.electronAPI.onSetMode((m)=>setMode(m));
+  }
+}
+
+function buildModeButtons(){
+  const mb=document.getElementById('modeButtons'); mb.innerHTML='';
+  Object.keys(MODE_TABLE).forEach((key,idx)=>{
+    const m=MODE_TABLE[key];
+    const btn=document.createElement('button');
+    btn.textContent=m.label;
+    btn.className=key===G.mode?'active':'';
+    btn.onclick=()=>setMode(key);
+    mb.appendChild(btn);
+  });
+  document.getElementById('modeHint').textContent=MODE_TABLE[G.mode].hint;
+}
+
+function setMode(key){
+  if(!MODE_TABLE[key]) return;
+  G.mode=key;
+  document.querySelectorAll('#modeButtons button').forEach((b,i)=>{
+    b.classList.toggle('active', Object.keys(MODE_TABLE)[i]===key);
+  });
+  document.getElementById('modeHint').textContent=MODE_TABLE[key].hint;
+  currentMode=MODE_TABLE[key].obj;
+  currentMode.build();
+  buildModeControls();
+  if(currentMode.trailMode) background(G.darkbg?color(0,0,10):color(0,0,98));
+}
+
+function buildModeControls(){
+  const host=document.getElementById('modeControls'); host.innerHTML='';
+  const P=currentMode.params;
+  for(const c of currentMode.controls){
+    if(c.section){ const h2=document.createElement('h2'); h2.textContent=c.section; host.appendChild(h2); continue; }
+    if(c.shapeButtons){ host.appendChild(_buildShapeButtons(P)); continue; }
+    const row=document.createElement('div'); row.className='row';
+    if(c.showIf) row._showIf=c.showIf;
+    const lab=document.createElement('label');
+    const val=document.createElement('span'); val.className='val'; val.id='mv_'+c.id;
+    val.textContent=_fmt(P[c.id],c.step);
+    lab.append(c.label+' ',val);
+    const inp=document.createElement('input');
+    inp.type='range'; inp.min=c.min; inp.max=c.max; inp.step=c.step; inp.value=P[c.id];
+    inp.oninput=()=>{ P[c.id]=parseFloat(inp.value); val.textContent=_fmt(P[c.id],c.step);
+      if(c.rebuild) currentMode.build(); _refreshShowIf(); };
+    row.append(lab,inp); host.appendChild(row);
+  }
+  _refreshShowIf();
+}
+
+function _buildShapeButtons(P){
+  const wrap=document.createElement('div'); wrap.className='row';
+  const lab=document.createElement('label'); lab.textContent='Type'; wrap.appendChild(lab);
+  const box=document.createElement('div'); box.className='btns';
+  [['ellipse','Ellipse'],['rect','Rect'],['triangle','Tri'],['polygon','Poly'],['star','Star'],['random','Rnd']].forEach(([k,l])=>{
+    const btn=document.createElement('button'); btn.textContent=l;
+    btn.className=k===P.shapeType?'active':'';
+    btn.onclick=()=>{ P.shapeType=k; [...box.children].forEach(c=>c.classList.remove('active')); btn.classList.add('active'); _refreshShowIf(); };
+    box.appendChild(btn);
+  });
+  wrap.appendChild(box); return wrap;
+}
+
+function _refreshShowIf(){
+  const P=currentMode.params;
+  document.querySelectorAll('#modeControls .row').forEach(row=>{
+    if(row._showIf) row.style.display=row._showIf(P)?'':'none';
+  });
+}
+
+function buildGlobalUI(){
+  ['sat','bright','alpha'].forEach(id=>{
+    const el=document.getElementById(id); el.value=G[id];
+    el.oninput=()=>{ G[id]=parseFloat(el.value); document.getElementById('v_'+id).textContent=G[id]; };
+  });
+  ['aScale','aSpeed','aDensity'].forEach(id=>{
+    const el=document.getElementById(id); el.value=G[id];
+    el.oninput=()=>{ G[id]=parseFloat(el.value); document.getElementById('v_'+id).textContent=(+el.value).toFixed(2); };
+  });
+  document.getElementById('difference').onchange=e=>G.difference=e.target.checked;
+  document.getElementById('darkbg').onchange=e=>{ G.darkbg=e.target.checked;
+    if(currentMode.trailMode) background(G.darkbg?color(0,0,10):color(0,0,98)); };
+  document.getElementById('regen').onclick=regen;
+  document.getElementById('saveBtn').onclick=saveHD;
+}
+
+function buildPalettes(){
+  const pc=document.getElementById('palettes'); pc.innerHTML='';
+  Object.keys(PALETTES).forEach(key=>{
+    const sw=document.createElement('div'); sw.className='swatch'+(key===paletteKey?' active':'');
+    sw.style.background=`hsl(${PALETTES[key][0]},60%,55%)`; sw.title=key;
+    sw.onclick=()=>{ paletteKey=key; [...pc.children].forEach(c=>c.classList.remove('active')); sw.classList.add('active'); currentMode.build(); };
+    pc.appendChild(sw);
+  });
+}
+
+function regen(){ seedVal=Math.floor(Math.random()*99999); currentMode.build();
+  if(currentMode.trailMode) background(G.darkbg?color(0,0,10):color(0,0,98)); }
+
+async function saveHD(){
+  // export at 2x pixel density (already set), save via native dialog
+  const cnv=document.querySelector('canvas');
+  cnv.toBlob(async(blob)=>{
+    const buf=await blob.arrayBuffer();
+    if(window.electronAPI){
+      const res=await window.electronAPI.savePng(new Uint8Array(buf));
+      if(!res.saved) console.log('Save cancelled');
+    } else {
+      // fallback for browser: direct download
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download='spacefield_'+Date.now()+'.png';
+      a.click();
+    }
+  }, 'image/png');
+}
+
+function togglePanel(){
+  document.getElementById('panel').classList.toggle('hidden');
+}
+
+function _fmt(v,step){ return step<1?(+v).toFixed(step<0.01?4:2):String(v); }
+</script>
+</body>
+</html>
